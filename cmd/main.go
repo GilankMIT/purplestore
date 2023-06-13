@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/ervinismu/purplestore/internal/app/controller"
 	"github.com/ervinismu/purplestore/internal/app/repository"
 	"github.com/ervinismu/purplestore/internal/app/service"
+	"github.com/ervinismu/purplestore/internal/app/util"
 	"github.com/ervinismu/purplestore/internal/pkg/config"
 	"github.com/ervinismu/purplestore/internal/pkg/middleware"
 	"github.com/gin-gonic/gin"
@@ -54,19 +57,56 @@ func main() {
 
 	// init repo
 	categoryRepository := repository.NewCategoryRepository(dbConn)
+	userRepo := repository.NewUserRepository(dbConn)
 
 	// init service
 	categoryService := service.NewCategorySerivce(categoryRepository)
+	userService := service.NewUserService(userRepo)
 
 	// init controller
 	categoryCotroller := controller.NewCategoryController(categoryService)
+	userController := controller.NewUserController(&userService)
 
 	// categories routes
 	v1Routes := r.Group("api/v1")
 	{
+
+		//auth route
+		v1Routes.POST("/auth/register", userController.Register)
+		v1Routes.POST("/auth/login", userController.Login)
+
+		v1Routes.GET("/secured/example",
+
+			//middleware
+			func(c *gin.Context) {
+				reqToken := c.Request.Header.Get("Authorization")
+				splitToken := strings.Split(reqToken, "Bearer ")
+				accessToken := splitToken[1]
+
+				err = util.VerifyJWT(accessToken)
+				if err != nil {
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"data": err.Error(),
+					})
+					c.Abort()
+					return
+				}
+
+				c.Next()
+			},
+
+			//main function
+			func(c *gin.Context) {
+				fmt.Println("this is the main function")
+				c.JSON(http.StatusOK, gin.H{
+					"data": "Success",
+				})
+			})
+
 		v1Routes.GET("/categories", categoryCotroller.GetList)
 		v1Routes.POST("/categories", categoryCotroller.Create)
 		v1Routes.GET("/categories/:id", categoryCotroller.Detail)
+
 	}
 
 	// run server
